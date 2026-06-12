@@ -1,0 +1,370 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>掌柜智库 - 登录</title>
+  <style>
+    *{box-sizing:border-box;margin:0;padding:0}
+    :root{
+      --brand:#4f6ef7;
+      --brand2:#7c5cfc;
+      --bg:#f5f7fa;
+      --card:#fff;
+      --text:#1a1a2e;
+      --muted:#8b8fa3;
+      --border:#e8eaef;
+      --error:#ef4444;
+      --success:#22c55e;
+      --radius:14px;
+      --shadow:0 8px 40px rgba(79,110,247,.12);
+    }
+    body{
+      font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif;
+      background:var(--bg);
+      min-height:100vh;
+      display:flex;
+      align-items:center;
+      justify-content:center;
+      position:relative;
+      overflow:hidden;
+    }
+    body::before{
+      content:'';
+      position:absolute;
+      top:-200px;left:-200px;
+      width:600px;height:600px;
+      background:radial-gradient(circle,rgba(79,110,247,.12),transparent 70%);
+      pointer-events:none;
+    }
+    body::after{
+      content:'';
+      position:absolute;
+      bottom:-300px;right:-200px;
+      width:800px;height:800px;
+      background:radial-gradient(circle,rgba(124,92,252,.10),transparent 70%);
+      pointer-events:none;
+    }
+
+    .login-container{
+      width:100%;max-width:420px;padding:20px;position:relative;z-index:1;
+    }
+    .login-card{
+      background:var(--card);
+      border-radius:20px;
+      box-shadow:var(--shadow);
+      padding:40px 36px;
+      border:1px solid var(--border);
+    }
+    .logo-section{
+      text-align:center;margin-bottom:32px;
+    }
+    .logo-icon{
+      width:56px;height:56px;border-radius:16px;
+      background:linear-gradient(135deg,var(--brand),var(--brand2));
+      display:inline-flex;align-items:center;justify-content:center;
+      margin-bottom:16px;
+      box-shadow:0 8px 24px rgba(79,110,247,.25);
+    }
+    .logo-icon svg{width:28px;height:28px;fill:#fff}
+    .logo-section h1{
+      font-size:22px;font-weight:700;color:var(--text);margin-bottom:4px;
+    }
+    .logo-section p{
+      font-size:13px;color:var(--muted);
+    }
+
+    .tabs{
+      display:flex;gap:0;margin-bottom:28px;
+      background:#f5f6f8;border-radius:10px;padding:3px;
+    }
+    .tab-btn{
+      flex:1;padding:10px 0;border:none;background:transparent;
+      font-size:14px;font-weight:500;color:var(--muted);
+      border-radius:8px;cursor:pointer;transition:all .25s;
+    }
+    .tab-btn.active{
+      background:#fff;color:var(--text);
+      box-shadow:0 2px 8px rgba(0,0,0,.06);
+    }
+
+    .form-group{margin-bottom:18px;position:relative}
+    .form-group label{
+      display:block;font-size:13px;font-weight:500;
+      color:var(--text);margin-bottom:6px;
+    }
+    .input-wrap{
+      position:relative;display:flex;align-items:center;
+    }
+    .input-wrap .icon{
+      position:absolute;left:14px;color:var(--muted);pointer-events:none;
+      display:flex;align-items:center;
+    }
+    .input-wrap .icon svg{width:18px;height:18px}
+    .form-input{
+      width:100%;padding:12px 14px 12px 42px;
+      border:1.5px solid var(--border);border-radius:10px;
+      font-size:14px;color:var(--text);background:#fff;
+      outline:none;transition:border-color .2s,box-shadow .2s;
+    }
+    .form-input::placeholder{color:#c0c4cc}
+    .form-input:focus{
+      border-color:var(--brand);
+      box-shadow:0 0 0 3px rgba(79,110,247,.10);
+    }
+    .form-input.error{
+      border-color:var(--error);
+      box-shadow:0 0 0 3px rgba(239,68,68,.08);
+    }
+    .error-msg{
+      font-size:12px;color:var(--error);margin-top:5px;
+      display:none;
+    }
+    .error-msg.show{display:block}
+
+    .submit-btn{
+      width:100%;padding:13px 0;border:none;border-radius:10px;
+      background:linear-gradient(135deg,var(--brand),var(--brand2));
+      color:#fff;font-size:15px;font-weight:600;
+      cursor:pointer;transition:opacity .2s,transform .1s;
+      margin-top:6px;
+    }
+    .submit-btn:hover{opacity:.92}
+    .submit-btn:active{transform:scale(.99)}
+    .submit-btn:disabled{opacity:.5;cursor:not-allowed}
+
+    .switch-text{
+      text-align:center;margin-top:20px;font-size:13px;color:var(--muted);
+    }
+    .switch-text a{
+      color:var(--brand);text-decoration:none;font-weight:500;cursor:pointer;
+    }
+    .switch-text a:hover{text-decoration:underline}
+
+    .toast{
+      position:fixed;top:24px;left:50%;transform:translateX(-50%) translateY(-80px);
+      padding:12px 24px;border-radius:10px;font-size:14px;font-weight:500;
+      color:#fff;z-index:999;transition:transform .35s ease;
+      box-shadow:0 8px 24px rgba(0,0,0,.15);
+    }
+    .toast.show{transform:translateX(-50%) translateY(0)}
+    .toast.success{background:var(--success)}
+    .toast.error{background:var(--error)}
+
+    .form-panel{display:none}
+    .form-panel.active{display:block}
+
+    @media(max-width:480px){
+      .login-card{padding:28px 20px;border-radius:16px}
+      .login-container{padding:12px}
+    }
+  </style>
+</head>
+<body>
+
+<div class="toast" id="toast"></div>
+
+<div class="login-container">
+  <div class="login-card">
+    <div class="logo-section">
+      <div class="logo-icon">
+        <svg viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 17.93c-3.95-.49-7-3.85-7-7.93 0-.62.08-1.21.21-1.79L9 15v1c0 1.1.9 2 2 2v1.93zm6.9-2.54c-.26-.81-1-1.39-1.9-1.39h-1v-3c0-.55-.45-1-1-1H8v-2h2c.55 0 1-.45 1-1V7h2c1.1 0 2-.9 2-2v-.41c2.93 1.19 5 4.06 5 7.41 0 2.08-.8 3.97-2.1 5.39z"/></svg>
+      </div>
+      <h1>掌柜智库</h1>
+      <p>企业知识库智能问答系统</p>
+    </div>
+
+    <div class="tabs">
+      <button class="tab-btn active" data-tab="login">登录</button>
+      <button class="tab-btn" data-tab="register">注册</button>
+    </div>
+
+    <!-- 登录表单 -->
+    <div class="form-panel active" id="panel-login">
+      <form id="loginForm" onsubmit="return false">
+        <div class="form-group">
+          <label>用户名</label>
+          <div class="input-wrap">
+            <span class="icon"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/></svg></span>
+            <input type="text" class="form-input" id="loginUsername" placeholder="请输入用户名" autocomplete="username" />
+          </div>
+          <div class="error-msg" id="loginUsernameErr"></div>
+        </div>
+        <div class="form-group">
+          <label>密码</label>
+          <div class="input-wrap">
+            <span class="icon"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M18 8h-1V6c0-2.76-2.24-5-5-5S7 3.24 7 6v2H6c-1.1 0-2 .9-2 2v10c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V10c0-1.1-.9-2-2-2zm-6 9c-1.1 0-2-.9-2-2s.9-2 2-2 2 .9 2 2-.9 2-2 2zm3.1-9H8.9V6c0-1.71 1.39-3.1 3.1-3.1 1.71 0 3.1 1.39 3.1 3.1v2z"/></svg></span>
+            <input type="password" class="form-input" id="loginPassword" placeholder="请输入密码" autocomplete="current-password" />
+          </div>
+          <div class="error-msg" id="loginPasswordErr"></div>
+        </div>
+        <button type="submit" class="submit-btn" id="loginBtn" onclick="handleLogin()">登 录</button>
+      </form>
+    </div>
+
+    <!-- 注册表单 -->
+    <div class="form-panel" id="panel-register">
+      <form id="registerForm" onsubmit="return false">
+        <div class="form-group">
+          <label>用户名</label>
+          <div class="input-wrap">
+            <span class="icon"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/></svg></span>
+            <input type="text" class="form-input" id="regUsername" placeholder="2-50 个字符" autocomplete="username" />
+          </div>
+          <div class="error-msg" id="regUsernameErr"></div>
+        </div>
+        <div class="form-group">
+          <label>密码</label>
+          <div class="input-wrap">
+            <span class="icon"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M18 8h-1V6c0-2.76-2.24-5-5-5S7 3.24 7 6v2H6c-1.1 0-2 .9-2 2v10c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V10c0-1.1-.9-2-2-2zm-6 9c-1.1 0-2-.9-2-2s.9-2 2-2 2 .9 2 2-.9 2-2 2zm3.1-9H8.9V6c0-1.71 1.39-3.1 3.1-3.1 1.71 0 3.1 1.39 3.1 3.1v2z"/></svg></span>
+            <input type="password" class="form-input" id="regPassword" placeholder="6-100 个字符" autocomplete="new-password" />
+          </div>
+          <div class="error-msg" id="regPasswordErr"></div>
+        </div>
+        <div class="form-group">
+          <label>邮箱 <span style="color:var(--muted);font-weight:400">(可选)</span></label>
+          <div class="input-wrap">
+            <span class="icon"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M20 4H4c-1.1 0-1.99.9-1.99 2L2 18c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm0 4l-8 5-8-5V6l8 5 8-5v2z"/></svg></span>
+            <input type="email" class="form-input" id="regEmail" placeholder="example@company.com" autocomplete="email" />
+          </div>
+        </div>
+        <button type="submit" class="submit-btn" id="regBtn" onclick="handleRegister()">注 册</button>
+      </form>
+    </div>
+
+    <div class="switch-text" id="switchText">
+      还没有账号？<a onclick="switchTab('register')">点击注册</a>
+    </div>
+  </div>
+</div>
+
+<script>
+  const AUTH_BASE = location.origin.startsWith('http') ? location.origin : 'http://127.0.0.1:8002';
+
+  // Tab 切换
+  document.querySelectorAll('.tab-btn').forEach(btn => {
+    btn.addEventListener('click', () => switchTab(btn.dataset.tab));
+  });
+
+  function switchTab(tab) {
+    document.querySelectorAll('.tab-btn').forEach(b => b.classList.toggle('active', b.dataset.tab === tab));
+    document.querySelectorAll('.form-panel').forEach(p => p.classList.toggle('active', p.id === 'panel-' + tab));
+    clearErrors();
+    document.getElementById('switchText').innerHTML = tab === 'login'
+      ? '还没有账号？<a onclick="switchTab(\'register\')">点击注册</a>'
+      : '已有账号？<a onclick="switchTab(\'login\')">点击登录</a>';
+  }
+
+  function clearErrors() {
+    document.querySelectorAll('.error-msg').forEach(e => { e.textContent = ''; e.classList.remove('show'); });
+    document.querySelectorAll('.form-input').forEach(i => i.classList.remove('error'));
+  }
+
+  function showError(inputId, msgId, msg) {
+    const input = document.getElementById(inputId);
+    const err = document.getElementById(msgId);
+    input.classList.add('error');
+    err.textContent = msg;
+    err.classList.add('show');
+  }
+
+  function showToast(msg, type) {
+    const t = document.getElementById('toast');
+    t.textContent = msg;
+    t.className = 'toast ' + type;
+    setTimeout(() => t.classList.add('show'), 10);
+    setTimeout(() => t.classList.remove('show'), 3000);
+  }
+
+  async function handleLogin() {
+    clearErrors();
+    const username = document.getElementById('loginUsername').value.trim();
+    const password = document.getElementById('loginPassword').value;
+    let ok = true;
+    if (!username) { showError('loginUsername', 'loginUsernameErr', '请输入用户名'); ok = false; }
+    if (!password) { showError('loginPassword', 'loginPasswordErr', '请输入密码'); ok = false; }
+    if (!ok) return;
+
+    const btn = document.getElementById('loginBtn');
+    btn.disabled = true; btn.textContent = '登录中...';
+    try {
+      const res = await fetch(`${AUTH_BASE}/auth/login`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username, password })
+      });
+      const data = await res.json();
+      if (res.ok && data.code === 200) {
+        localStorage.setItem('access_token', data.data.access_token);
+        localStorage.setItem('token_expires', Date.now() + data.data.expires_in * 1000);
+        // 获取用户信息
+        try {
+          const meRes = await fetch(`${AUTH_BASE}/auth/me`, {
+            headers: { 'Authorization': 'Bearer ' + data.data.access_token }
+          });
+          const meData = await meRes.json();
+          if (meData.code === 200) {
+            localStorage.setItem('user_info', JSON.stringify(meData.data));
+          }
+        } catch (_) {}
+        showToast('登录成功，正在跳转...', 'success');
+        setTimeout(() => { window.location.href = '/html'; }, 800);
+      } else {
+        showToast(data.message || '登录失败', 'error');
+      }
+    } catch (e) {
+      showToast('网络错误，请检查服务是否启动', 'error');
+    } finally {
+      btn.disabled = false; btn.textContent = '登 录';
+    }
+  }
+
+  async function handleRegister() {
+    clearErrors();
+    const username = document.getElementById('regUsername').value.trim();
+    const password = document.getElementById('regPassword').value;
+    const email = document.getElementById('regEmail').value.trim();
+    let ok = true;
+    if (!username || username.length < 2) { showError('regUsername', 'regUsernameErr', '用户名至少 2 个字符'); ok = false; }
+    if (!password || password.length < 6) { showError('regPassword', 'regPasswordErr', '密码至少 6 个字符'); ok = false; }
+    if (!ok) return;
+
+    const btn = document.getElementById('regBtn');
+    btn.disabled = true; btn.textContent = '注册中...';
+    try {
+      const body = { username, password };
+      if (email) body.email = email;
+      const res = await fetch(`${AUTH_BASE}/auth/register`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body)
+      });
+      const data = await res.json();
+      if (res.ok && data.code === 200) {
+        showToast('注册成功，请登录', 'success');
+        setTimeout(() => switchTab('login'), 800);
+      } else {
+        showToast(data.message || '注册失败', 'error');
+      }
+    } catch (e) {
+      showToast('网络错误，请检查服务是否启动', 'error');
+    } finally {
+      btn.disabled = false; btn.textContent = '注 册';
+    }
+  }
+
+  // Enter 提交
+  document.getElementById('loginPassword').addEventListener('keydown', e => { if (e.key === 'Enter') handleLogin(); });
+  document.getElementById('regEmail').addEventListener('keydown', e => { if (e.key === 'Enter') handleRegister(); });
+
+  // 已登录则跳转
+  (function checkAuth() {
+    const token = localStorage.getItem('access_token');
+    const expires = localStorage.getItem('token_expires');
+    if (token && expires && Date.now() < Number(expires)) {
+      window.location.href = '/html';
+    }
+  })();
+</script>
+</body>
+</html>
