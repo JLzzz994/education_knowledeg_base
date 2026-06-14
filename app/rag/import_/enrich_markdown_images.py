@@ -1,7 +1,7 @@
 import re
 from pathlib import Path
 
-from envs.subtitle.Lib import mimetypes
+import mimetypes
 from langchain_core.output_parsers import StrOutputParser
 from minio.deleteobjects import DeleteObject
 
@@ -10,9 +10,10 @@ from app.infra.object_storage.minio_gateway import minio_gateway
 from app.process.import_.agent.state import ImportGraphState
 from app.rag.import_.config import CONTEXT_LENGTH, SUPPORTED_IMAGE_EXTENSIONS
 from app.shared.runtime.load_prompt import load_prompt
-from app.shared.runtime.logger import logger
+from app.shared.runtime.logger import logger, step_log
 
 
+@step_log('load_md_and_images_path')
 def load_md_and_images_path(state: ImportGraphState) -> tuple[str, Path, Path]:
     '''
 
@@ -41,7 +42,7 @@ def load_md_and_images_path(state: ImportGraphState) -> tuple[str, Path, Path]:
     images_path_obj = md_path_obj.parent / 'images'
     return md_content, md_path_obj, images_path_obj
 
-
+@step_log('scan_images_match_context')
 def scan_images_match_context(md_content: str, images_path_obj: Path, context_length: int = CONTEXT_LENGTH) -> list[
     tuple[str, str, tuple[str, str]]]:
     '''
@@ -79,7 +80,7 @@ def scan_images_match_context(md_content: str, images_path_obj: Path, context_le
     logger.info(f'图片识别完成,共{len(images_context)}张图片')
     return images_context
 
-
+@step_log('summarize_image')
 def summarize_image(images_context: list[tuple[str, str, tuple[str, str]]], image_name2url: dict[str, str],
                     file_name_stem: str) -> dict[str, str]:
     '''
@@ -119,7 +120,7 @@ def summarize_image(images_context: list[tuple[str, str, tuple[str, str]]], imag
     logger.info(f'图片总结完成,共{len(image_name2summary)}张图片')
     return image_name2summary
 
-
+@step_log('upload_images_and_replace_urls')
 def upload_images_and_replace_urls(images_context: list[tuple[str, str, tuple[str, str]]], md_content: str,
                                    file_name_stem: str):
     '''
@@ -161,7 +162,7 @@ def upload_images_and_replace_urls(images_context: list[tuple[str, str, tuple[st
             )
             image_name2url[image_name] = minio_gateway.build_image_url(file_name_stem, image_name)
         except Exception as e:
-            logger.error(f'{image_name}图片上传失败,跳过继续上传')
+            logger.error(f'{image_name}图片上传失败,跳过继续上传,异常: {e}')
     # 1.4 获取image_summary_dict
     image_name2summary = summarize_image(images_context, image_name2url, file_name_stem)
     # 1.5 循环处理每张图片 替换md_content
@@ -171,7 +172,7 @@ def upload_images_and_replace_urls(images_context: list[tuple[str, str, tuple[st
         md_content = reg.sub(lambda _: f"![{image_summary}]({image_url})", md_content)
     return md_content
 
-
+@step_log('backup_new_md_content')
 def backup_new_md_content(md_content_new: str, md_path_obj: Path) -> str:
     '''
     备份 返回新路径
@@ -183,7 +184,7 @@ def backup_new_md_content(md_content_new: str, md_path_obj: Path) -> str:
     md_path_obj_new.write_text(md_content_new, encoding='utf-8')
     return str(md_path_obj_new)
 
-
+@step_log('enrich_markdown_images')
 def enrich_markdown_images(state: ImportGraphState) -> ImportGraphState:
     """
     `md_path`, `md_content`

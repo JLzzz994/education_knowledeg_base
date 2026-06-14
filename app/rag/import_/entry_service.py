@@ -2,9 +2,10 @@ from pathlib import Path
 
 from app.process.import_.agent.state import ImportGraphState
 from app.rag.import_.config import SUPPORTED_FILE_TYPES
-from app.shared.runtime.logger import logger
+from app.shared.runtime.logger import logger, step_log
 
 
+@step_log("analysis_input_file")
 def analysis_input_file(state: ImportGraphState) -> ImportGraphState:
     '''
     `local_file_path`, `task_id`

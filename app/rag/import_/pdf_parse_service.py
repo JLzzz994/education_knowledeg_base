@@ -8,10 +8,10 @@ from app.infra.config.providers import infra_config
 from app.process.import_.agent.state import ImportGraphState
 from app.rag.import_.config import MINERU_MODEL_VERSION, MINERU_DOWNLOAD_TIMEOUT_SECONDS, MINERU_POLL_TIMEOUT_SECONDS, \
     MINERU_POLL_INTERVAL_SECONDS
-from app.shared.runtime.logger import logger
+from app.shared.runtime.logger import logger, step_log
 from app.shared.utils.path_util import PROJECT_ROOT
 
-
+@step_log('validate_pdf_path')
 def validate_pdf_path(state: ImportGraphState) -> tuple[Path, Path, str]:
     '''
     source_file_path, local_dir
@@ -38,7 +38,7 @@ def validate_pdf_path(state: ImportGraphState) -> tuple[Path, Path, str]:
 
     return source_file_path_obj, local_dir_obj, file_type
 
-
+@step_log('upload_pdf_to_mineru')
 def upload_pdf_to_mineru(source_file_path_obj: Path) -> str:
     '''
 
@@ -180,7 +180,7 @@ print(res.json()["data"])
 
         poll_response_dict = poll_response.json()
         msg = poll_response_dict.get('msg', '')
-        if poll_code := poll_response_dict.get('code') != 0:
+        if (poll_code := poll_response_dict.get('code')) != 0:
             logger.error(f'轮询获取下载url时,业务异常,业务状态码:{poll_code},业务异常信息:{msg}')
             raise RuntimeError(f'轮询获取下载url时,业务异常,业务状态码:{poll_code},业务异常信息:{msg}')
 
@@ -198,7 +198,7 @@ print(res.json()["data"])
         logger.warning(f'{source_file_path_obj.name}任务正在解析中... 请等待')
         time.sleep(poll_interval_time)
 
-
+@step_log('download_and_extract_md')
 def download_and_extract_md(download_url, local_dir_obj: Path, stem: str) -> Path:
     '''
     下载解析后的文件抽取md (解压-> 找md)
@@ -229,7 +229,6 @@ def download_and_extract_md(download_url, local_dir_obj: Path, stem: str) -> Pat
         logger.error('下载成功,解压后没有发现任何md文件')
         raise RuntimeError('下载成功,解压后没有发现任何md文件')
 
-
     for md_path_obj in md_path_obj_list:
         if md_path_obj.stem == stem:
             logger.info(f'解压名与文件名相同,不用处理')
@@ -246,7 +245,7 @@ def download_and_extract_md(download_url, local_dir_obj: Path, stem: str) -> Pat
     logger.info(f'获得解压后的md文件名为,{full_md_path_obj} 重命名后:{stem}.md')
     return full_md_path_obj.rename(full_md_path_obj.with_name(f'{stem}.md'))
 
-
+@step_log('parse_pdf_to_markdown')
 def parse_pdf_to_markdown(state: ImportGraphState) -> ImportGraphState:
     '''
     source_file_path file_type file_title, `local_dir`

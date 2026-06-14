@@ -18,3 +18,28 @@ MINERU_POLL_INTERVAL_SECONDS = 3
 # MinerU 文件下载超时时间（单位：秒），下载文件超过此时长则中断
 MINERU_DOWNLOAD_TIMEOUT_SECONDS = 30
 
+# md文档切块 split_service
+CHUNK_MAX_SIZE = 1000
+# 文本切块基准长度：单个文本块理想大小为 600 字符（兼顾语义完整性 + 检索精度）
+CHUNK_SIZE = 600
+# 文本块重叠长度：相邻块之间重叠 20 字符，保证语义不被切断、上下文连贯
+CHUNK_OVERLAP = 50
+
+# 主体识别 item_name_service
+# chunks 获取前五个切片
+ITEM_NAME_CONTEXT_CHUNK_K=5
+# 上下文最多不能超过10000字符
+ITEM_NAME_CONTEXT_TOTAL_MAX_CHARS=10000
+
+
+# embedding_service
+# 向量化批次大小
+EMBEDDING_BATCH_SIZE=5
+
+
+# Milvus VARCHAR 字段最大长度（用于 title、item_name 等短文本）
+MILVUS_DEFAULT_VARCHAR_MAX_LENGTH = 512
+# Milvus content 字段最大长度（用于存储长文本内容）
+MILVUS_CHUNK_CONTENT_MAX_LENGTH = 65535
+# Milvus 向量维度（BGE-M3 稠密向量维度）
+MILVUS_VECTOR_DIM = 1024
