@@ -22,6 +22,7 @@ class MinioGateway:
         return infra_config.minio.minio_img_dir
 
     # 获取MinIO客户端实例,用于上传、下载、查询文件等操作
+    @property
     def client(self) -> Minio:
         return get_minio_client()
 

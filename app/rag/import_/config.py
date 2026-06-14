@@ -1,6 +1,11 @@
 #支持处理的文件类型
 SUPPORTED_FILE_TYPES = {'pdf', 'md', 'txt', 'docx'}
 
+# enrich_markdown_images.py
+#context_length
+CONTEXT_LENGTH=100
+# 支持的图片格式
+SUPPORTED_IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".gif", ".bmp", ".webp"}
 
 # pdf_parse_service
 # MinerU 模型版本配置（vlm = 视觉语言模型，适合PDF/图片高精度解析）
