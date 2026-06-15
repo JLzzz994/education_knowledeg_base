@@ -8,7 +8,7 @@ from minio.deleteobjects import DeleteObject
 from app.infra.llm.providers import llm_provider
 from app.infra.object_storage.minio_gateway import minio_gateway
 from app.process.import_.agent.state import ImportGraphState
-from app.rag.import_.config import CONTEXT_LENGTH, SUPPORTED_IMAGE_EXTENSIONS
+from app.rag.import_.config import CONTEXT_LENGTH, IMAGE_FILE_EXTENSIONS
 from app.shared.runtime.load_prompt import load_prompt
 from app.shared.runtime.logger import logger, step_log
 
@@ -53,11 +53,15 @@ def scan_images_match_context(md_content: str, images_path_obj: Path, context_le
     :return:(图片名.后缀,图片路径,(上文,下文))
     '''
     images_context = []
+    # 2.0 检查 images 目录是否存在，不存在则跳过（TXT 等格式无图片目录）
+    if not images_path_obj.is_dir():
+        logger.info(f'images 目录不存在，跳过图片扫描: {images_path_obj}')
+        return images_context
     # 2.1 从images_path_obj下获取每一张图片
     for image_file_obj in images_path_obj.iterdir():
         image_name = image_file_obj.name
         # 2.2 遍历文件 排除不支持的格式
-        if not image_file_obj.suffix in SUPPORTED_IMAGE_EXTENSIONS:
+        if not image_file_obj.suffix in IMAGE_FILE_EXTENSIONS:
             logger.warning(f'{image_name}不是支持的图片格式')
             continue
 
@@ -199,8 +203,8 @@ def enrich_markdown_images(state: ImportGraphState) -> ImportGraphState:
     """
     # 1 获取要使用的参数 md_content, md_path_obj, images_path_obj
     md_content, md_path_obj, images_path_obj = load_md_and_images_path(state)
-    # 2 判断image_path_obj 是否存在内容,没有,直接结束进行下一个节点(没有图片也一定有images)
-    if not any(images_path_obj.iterdir()):
+    # 2 判断images目录是否存在且有内容，不存在或为空则跳过图片处理
+    if not images_path_obj.is_dir() or not any(images_path_obj.iterdir()):
         logger.warning(f'当前{md_content}没有图片,无需图片处理 正常进入下一个节点')
         return state
     # 3 获取匹配图片的上下文

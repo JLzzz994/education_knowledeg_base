@@ -1,5 +1,6 @@
 """
 工具模块，负责提供 mongo history 相关的辅助能力。
+REQ-07: 新增 user_id 关联、用户会话列表查询、用户历史查询、TTL 自动清理
 """
 import os
 from typing import Any
@@ -13,12 +14,15 @@ from app.shared.runtime.logger import logger
 # 加载.env文件中的环境变量，使os.getenv能读取到配置
 load_dotenv()
 
+# 历史记录保留天数（REQ-07: TTL 自动清理）
+HISTORY_TTL_DAYS = int(os.getenv("HISTORY_TTL_DAYS", "1"))
+
 
 class HistoryMongoTool:
     """
     MongoDB 历史对话记录读写工具类 (基于原生 PyMongo 实现)
     核心功能：封装MongoDB的连接、集合初始化、索引创建，为上层提供统一的数据库操作入口
-    扩展功能：支持与LangChain消息对象的格式转换（原代码预留能力）
+    REQ-07 扩展：支持 user_id 关联、会话列表聚合查询、TTL 自动过期
     """
     def __init__(self):
         """
@@ -42,6 +46,16 @@ class HistoryMongoTool:
             # 索引规则：session_id升序 + ts降序，适配"按会话查最新记录"的核心查询场景
             # create_index自带幂等性：索引已存在时不会重复创建，无需额外判断
             self.chat_message.create_index([("session_id", 1), ("ts", -1)])
+
+            # REQ-07: 用户维度索引
+            self.chat_message.create_index("user_id")  # 支持按用户查询
+            self.chat_message.create_index([("user_id", 1), ("ts", -1)])  # 复合索引：用户+时间
+
+            # REQ-07: TTL 索引，自动清理过期记录
+            # 注意：TTL 索引只能在已有日期字段或 BSON 日期上创建
+            # 由于 ts 是时间戳（float），需要额外的 expire_at 日期字段
+            # 这里使用替代方案：在 save_chat_message 中计算 expire_at
+            self.chat_message.create_index("expire_at", expireAfterSeconds=0)
 
             # 记录成功日志，确认数据库连接和初始化完成
             logger.info(f"Successfully connected to MongoDB: {self.db_name}")
@@ -109,7 +123,8 @@ def save_chat_message(
         rewritten_query: str = "",
         item_names: list[str] | None = None,
         image_urls: list[str] | None = None,
-        message_id: str | None = None
+        message_id: str | None = None,
+        user_id: str = "",
 ) -> str:
     """
     写入/更新单条会话记录到MongoDB
@@ -121,6 +136,7 @@ def save_chat_message(
     :param item_names: 关联的商品名称列表（可选，支持多商品，默认None）
     :param image_urls: 关联的图片URL列表（可选，默认None）
     :param message_id: 记录主键ID（可选，有值则更新，无值则新增）
+    :param user_id: 用户ID（REQ-07，关联 users._id，用于用户维度历史查询）
     :return: 插入/更新的记录唯一标识（新增返回ObjectId字符串，更新返回传入的message_id）
     """
     # 生成当前时间的时间戳（秒级），用于记录消息的创建时间，后续用于排序和查询
@@ -134,7 +150,9 @@ def save_chat_message(
         "rewritten_query": rewritten_query or "",  # 重写查询，空值处理为空字符串
         "item_names": item_names,  # 关联商品名称列表
         "image_urls": image_urls,  # 关联图片URL列表
-        "ts": ts  # 时间戳，排序和时间筛选维度
+        "ts": ts,  # 时间戳，排序和时间筛选维度
+        "user_id": user_id,  # REQ-07: 用户ID，支持用户维度历史查询
+        "expire_at": datetime.fromtimestamp(ts + HISTORY_TTL_DAYS * 86400),  # REQ-07: TTL 过期时间
     }
 
     # 获取全局的HistoryMongoTool实例，使用单例模式
@@ -214,6 +232,76 @@ def get_recent_messages(session_id: str, limit: int = 10) -> list[dict[str, Any]
         logger.error(f"Error getting recent messages: {e}")
         # 异常时返回空列表，避免上层处理None报错
         return []
+
+
+# ==================== REQ-07: 用户维度查询 ====================
+
+def get_user_sessions(user_id: str, limit: int = 20) -> list[dict]:
+    """
+    获取用户的会话列表（REQ-07）
+    通过 MongoDB 聚合查询，按 session_id 分组，返回每个会话的最后活跃时间、消息数等
+    :param user_id: 用户 ID
+    :param limit: 返回的会话数量上限
+    :return: 会话列表，每个元素含 session_id, last_active, message_count, last_query, item_names
+    """
+    mongo_tool = get_history_mongo_tool()
+    try:
+        pipeline = [
+            # 1. 筛选指定用户的消息
+            {"$match": {"user_id": user_id}},
+            # 2. 按时间倒序排序（最新的消息排前面）
+            {"$sort": {"ts": -1}},
+            # 3. 按 session_id 分组，取每组的第一条消息（即最新消息）的字段
+            {"$group": {
+                "_id": "$session_id",
+                "last_active": {"$first": "$ts"},
+                "message_count": {"$sum": 1},
+                "last_query": {"$first": "$text"},
+                "item_names": {"$first": "$item_names"},
+            }},
+            # 4. 按最后活跃时间倒序（最近的会话排前面）
+            {"$sort": {"last_active": -1}},
+            # 5. 限制返回数量
+            {"$limit": limit},
+        ]
+        results = list(mongo_tool.chat_message.aggregate(pipeline))
+        # 格式化输出：将 _id 转为 session_id
+        sessions = []
+        for r in results:
+            sessions.append({
+                "session_id": r["_id"],
+                "last_active": r.get("last_active", 0),
+                "message_count": r.get("message_count", 0),
+                "last_query": r.get("last_query", ""),
+                "item_names": r.get("item_names") or [],
+            })
+        return sessions
+    except Exception as e:
+        logger.error(f"Error getting user sessions: {e}")
+        return []
+
+
+def get_user_history(user_id: str, page: int = 1, page_size: int = 50) -> tuple[list[dict], int]:
+    """
+    获取用户的历史消息列表（REQ-07，分页）
+    :param user_id: 用户 ID
+    :param page: 页码（从 1 开始）
+    :param page_size: 每页条数
+    :return: (消息列表, 总数)
+    """
+    mongo_tool = get_history_mongo_tool()
+    try:
+        query = {"user_id": user_id}
+        # 查询总数
+        total = mongo_tool.chat_message.count_documents(query)
+        # 分页查询，按时间倒序
+        skip = (page - 1) * page_size
+        cursor = mongo_tool.chat_message.find(query).sort("ts", -1).skip(skip).limit(page_size)
+        messages = list(cursor)
+        return messages, total
+    except Exception as e:
+        logger.error(f"Error getting user history: {e}")
+        return [], 0
 
 
 # 主程序入口：仅当直接运行该脚本时执行，用于简单的功能测试

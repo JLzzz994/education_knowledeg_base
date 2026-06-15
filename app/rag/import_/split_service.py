@@ -1,3 +1,14 @@
+"""
+文档切分服务模块
+将 Markdown 长文档切分为适合向量化检索的小块（Chunks）
+
+切分流程:
+1. 提取并保护特殊内容（公式、代码块、表格）→ 替换为占位符
+2. 按标题层级粗切 → 每个标题下的内容为一个块
+3. 超长块二次拆分（RecursiveCharacterTextSplitter）
+4. 短块合并（同一父标题下、合并后不超长）
+5. 恢复保护内容，输出最终切片列表
+"""
 import json
 import re
 import uuid
@@ -28,25 +39,26 @@ def _make_placeholder(key: str) -> str:
 
 @step_log("extract_protected_blocks")
 def extract_protected_blocks(md_content: str) -> tuple[str, dict[str, str]]:
-    '''
-    提取并保护 公式、代码块、表格 替换为占位符
-    保护顺序 围栏代码块 行内代码块 块级别公式 行内公式 表格
-    :param md_content:
-    :return:
-    '''
+    """
+    提取并保护公式、代码块、表格，替换为占位符
+    保护顺序: 围栏代码块 → 行内代码块 → 块级公式 → 行内公式 → 表格
+    目的: 防止这些特殊内容在后续切分时被破坏（如表格行被拆散、公式被截断）
+    :param md_content: Markdown 原始内容
+    :return: (替换占位符后的内容, 占位符→原始内容的映射表)
+    """
     protected_map: dict[str, str] = {}
-    # 待匹配的正则列表
+    # 按优先级排列的正则列表（先匹配大块，再匹配小块）
     patterns = [
-        r"(```[\s\S]*?```|~~~[\s\S]*?~~~)",  # 围栏代码块
-        r"`[^`\n]+`",  # 行内代码
-        r"\$\$[\s\S]*?\$\$",  # 块级公式
-        r"(?<!\$)\$(?!\$)([^$\n]+?)\$(?!\$)",  # 行内公式
-        r"(?:^\|.+\|[ \t]*\n)+(?:^\|[-:| ]+\|[ \t]*\n)(?:^\|.+\|[ \t]*\n?)+",  # 表格
+        r"(```[\s\S]*?```|~~~[\s\S]*?~~~)",  # 围栏代码块（``` 或 ~~~ 包裹）
+        r"`[^`\n]+`",                          # 行内代码（单反引号包裹）
+        r"\$\$[\s\S]*?\$\$",                   # 块级公式（双 $ 包裹）
+        r"(?<!\$)\$(?!\$)([^$\n]+?)\$(?!\$)",  # 行内公式（单 $ 包裹，排除 $$）
+        r"(?:^\|.+\|[ \t]*\n)+(?:^\|[-:| ]+\|[ \t]*\n)(?:^\|.+\|[ \t]*\n?)+",  # Markdown 表格
     ]
 
     for pattern in patterns:
         matches = list(re.finditer(pattern, md_content))
-        # 从后往前替换,避免位移导致索引错乱
+        # 从后往前替换，避免位移导致后续索引错乱
         for match in matches:
             key = uuid.uuid4().hex[:12]
             placeholder = _make_placeholder(key)
@@ -99,12 +111,16 @@ def load_md_content(state: ImportGraphState) -> tuple[str, str, Path]:
 
 @step_log("split_by_titles")
 def split_by_titles(md_content: str, file_title: str) -> list[dict]:
-    '''
-    根据标题级粗切
-    :param md_content:
-    :param file_title:
-    :return:
-    '''
+    """
+    按标题层级粗切：遇到标题行就结算上一个标题的内容
+    1. 逐行扫描，匹配 # ~ ###### 标题行
+    2. 遇到新标题时，将上一个标题下的内容打包为一个 chunk
+    3. 最后一个标题没有下一个标题触发，需主动结算
+    4. 若全文无标题，则整体作为一个 chunk
+    :param md_content: 已替换占位符的 Markdown 内容
+    :param file_title: 文件标题（用于标识来源）
+    :return: 粗切后的 chunk 列表，每个元素含 title/content/file_title
+    """
     reg = re.compile(r"^\s*#{1,6}\s.+")
     lines = md_content.split('\n')
     chunks: list[dict] = []
@@ -116,19 +132,20 @@ def split_by_titles(md_content: str, file_title: str) -> list[dict]:
         if not line:
             continue
         if reg.match(line):
-            # 匹配到标题,先结算上次标题内容
+            # 匹配到标题，先结算上一个标题的内容
             if current_title and len(current_lines) > 1:
                 chunks.append({
                     'title': current_title,
                     'content': '\n'.join(current_lines),
                     'file_title': file_title,
                 })
-            # 第一次标题,初始化
+            # 初始化新标题
             current_title = line
             current_lines = [line]
         else:
             current_lines.append(line)
-    # 因为是遇到下个标题结算，最后一个块没有下个标题,所以主动结算
+
+    # 主动结算最后一个标题（没有下一个标题来触发）
     if current_title and len(current_lines) > 1:
         chunks.append({
             'title': current_title,
@@ -136,7 +153,7 @@ def split_by_titles(md_content: str, file_title: str) -> list[dict]:
             'file_title': file_title
         })
 
-    # chunks结算是按标题,则全文没有标题
+    # 全文没有标题时，整体作为一个 chunk
     if not chunks:
         chunks.append({
             'title': 'default',
@@ -291,24 +308,29 @@ def backup_chunks_json(final_merge_trunks: list[dict], md_path_obj: Path):
 
 @step_log("split_document")
 def split_document(state: ImportGraphState) -> ImportGraphState:
-    '''
-    文档切分服务
-    :param state:
-    :return:
-    '''
-    # 1 加载并校验md_content内容
+    """
+    文档切分服务（编排函数）
+    串联整个切分流程，将 Markdown 内容转化为结构化切片列表
+    :param state: 导入图全局状态
+    :return: 更新后的状态（state['chunks'] 已填充）
+    """
+    # 1. 加载并校验 md_content（若为空则从文件读取）
     md_content, file_title, md_path_obj = load_md_content(state)
-    # 2 提取并保护公式、代码块、表格(替换为占位符)
-    md_content, protected_map = extract_protected_blocks(md_content)
-    # 3 按标题层级粗切
-    spilt_by_titles_chunks = split_by_titles(md_content, file_title)
-    # 4 对超长快细切、对短块合并 补全属性
 
+    # 2. 提取并保护公式、代码块、表格（替换为占位符，防止切分时破坏）
+    md_content, protected_map = extract_protected_blocks(md_content)
+
+    # 3. 按标题层级粗切（每个标题下的内容为一个块）
+    spilt_by_titles_chunks = split_by_titles(md_content, file_title)
+
+    # 4. 超长块二次拆分 + 短块合并 + 补全 parent_title/part 属性
     final_merge_trunks = refine_chunks(spilt_by_titles_chunks, protected_map)
-    # 5 恢复被保护内容
+
+    # 5. 恢复被保护内容（占位符 → 原始公式/代码/表格）
     for chunk in final_merge_trunks:
         chunk['content'] = restore_protected_blocks(chunk['content'], protected_map)
-    # 6 备份并回写chunks
+
+    # 6. 备份切片到 JSON 文件，写入 state
     backup_chunks_json(final_merge_trunks, md_path_obj)
     state['chunks'] = final_merge_trunks
     return state

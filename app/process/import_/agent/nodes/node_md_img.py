@@ -1,13 +1,23 @@
+"""
+Markdown 图片增强节点
+职责: 扫描 MD 中的图片引用，调用视觉模型生成描述，上传 MinIO 替换 URL
+写入 state: md_content（图片 URL 替换后）, md_path（新 MD 文件路径）
+"""
 from app.shared.runtime.logger import node_log
 from app.shared.utils.task_utils import add_done_task, add_running_task
 from app.process.import_.agent.state import ImportGraphState
 from app.rag.import_.enrich_markdown_images import enrich_markdown_images
 
+
 @node_log("node_md_img")
 def node_md_img(state: ImportGraphState) -> ImportGraphState:
     """
-    节点: 图片处理 (node_md_img)
-    为什么叫这个名字: 处理 Markdown 中的图片资源 (Image)。
+    Markdown 图片增强节点
+    1. 标记节点开始运行
+    2. 扫描 images 目录，匹配 MD 中的图片引用
+    3. 上传图片到 MinIO，调用视觉模型生成图片摘要
+    4. 替换 MD 中的图片引用为图片摘要 + 远程 URL
+    5. 标记节点完成
     """
     add_running_task(state["task_id"], "node_md_img")
     state = enrich_markdown_images(state)

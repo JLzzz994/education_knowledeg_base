@@ -1,13 +1,23 @@
+"""
+文档切分节点
+职责: 将 Markdown 长文档按标题切分、超长块二次拆分、短块合并，生成结构化切片
+写入 state: chunks（切片列表，每个元素含 title/content/file_title/parent_title/part）
+"""
 from app.shared.runtime.logger import node_log
 from app.shared.utils.task_utils import add_done_task, add_running_task
 from app.process.import_.agent.state import ImportGraphState
 from app.rag.import_.split_service import split_document
 
+
 @node_log("node_document_split")
 def node_document_split(state: ImportGraphState) -> ImportGraphState:
     """
-    节点: 文档切分 (node_document_split)
-    为什么叫这个名字: 将长文档切分成小的 Chunks (切片) 以便检索。
+    文档切分节点
+    1. 标记节点开始运行
+    2. 提取并保护公式/代码块/表格（替换为占位符）
+    3. 按标题层级粗切，超长块二次拆分，短块合并
+    4. 恢复保护内容，备份 JSON，写入 state['chunks']
+    5. 标记节点完成
     """
     add_running_task(state["task_id"], "node_document_split")
     state = split_document(state)
