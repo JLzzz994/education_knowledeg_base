@@ -14,6 +14,7 @@ class SSEEvent:
     DELTA = "delta"         # LLM 流式输出增量
     FINAL = "final"         # 最终完整答案
     ERROR = "error"         # 错误信息
+    INTERRUPT = "interrupt" # 中断请求，需要用户输入
     CLOSE = "__close__"     # 关闭连接信号
 
 

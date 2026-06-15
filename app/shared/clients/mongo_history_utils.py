@@ -31,25 +31,36 @@ class HistoryMongoTool:
             # 从环境变量读取要使用的数据库名称
             self.db_name = os.getenv("MONGO_DB_NAME")
 
+
             # 创建MongoDB客户端实例，建立与数据库的连接
             self.client = MongoClient(self.mongo_url)
             # 获取指定名称的数据库对象 user 库
             self.db = self.client[self.db_name]
+
             # 获取对话记录的集合（相当于关系型数据库的表），集合名：chat_message  db.chat_message
             self.chat_message = self.db["chat_message"]
+            # 获取永久存储历史记录的集合
+            self.chat_history_message = self.db["chat_history_message"]
+            # 存储文件传入及更新的表
+            self.document_versions = self.db["document_versions"]
 
             # 为chat_message集合创建复合索引，提升查询性能
             # 索引规则：session_id升序 + ts降序，适配"按会话查最新记录"的核心查询场景
             # create_index自带幂等性：索引已存在时不会重复创建，无需额外判断
             self.chat_message.create_index([("session_id", 1), ("ts", -1)])
 
+            self.chat_history_message.create_index([("user_id", 1), ("ts", -1)])
+            self.document_versions.create_index([("_id", 1), ("ts", -1)])
+
+
             # 记录成功日志，确认数据库连接和初始化完成
             logger.info(f"Successfully connected to MongoDB: {self.db_name}")
+
         except Exception as e:
             # 捕获所有初始化异常，记录详细错误日志
             logger.error(f"Failed to connect to MongoDB: {e}")
             # 重新抛出异常，让调用方感知初始化失败，避免使用未初始化的实例
-            raise
+            raise e
 
 
 # 定义全局变量：存储HistoryMongoTool的单例实例
@@ -101,8 +112,9 @@ def clear_history(session_id: str) -> int:
         # 异常时返回0，标识删除失败
         return 0
 
-
+# 聊天记录会话级保存
 def save_chat_message(
+        user_id: str,
         session_id: str,
         role: str,
         text: str,
@@ -128,6 +140,7 @@ def save_chat_message(
 
     # 构造要插入/更新的文档数据（MongoDB的基本数据单元是文档，类似Python字典）
     document = {
+        "user_id":user_id,
         "session_id": session_id,  # 会话ID，关联维度
         "role": role,  # 消息角色
         "text": text,  # 消息内容
@@ -153,6 +166,102 @@ def save_chat_message(
         result = mongo_tool.chat_message.insert_one(document)
         # 新增操作返回插入的ObjectId并转为字符串，便于上层使用（避免直接返回ObjectId对象）
         return str(result.inserted_id)
+
+# 保存永久聊天记录
+def save_chat_history_message(
+        user_id: str,
+        question: str,
+        answer: str,
+        item_names: list[str] | None = None,
+        image_urls: list[str] | None = None,
+        is_web_only:bool=False,
+        message_id: str | None = None
+) -> str:
+    """
+    写入/更新单条会话记录到MongoDB
+    支持两种模式：无message_id时新增记录，有message_id时更新已有记录
+    :param session_id: 会话唯一标识，关联对话所属的会话
+    :param role: 消息角色，固定值：user（用户）/assistant（助手）
+    :param text: 对话核心内容，用户的提问或助手的回答
+    :param rewritten_query: 重写后的查询语句（可选，用于检索增强等场景，默认空字符串）
+    :param item_names: 关联的商品名称列表（可选，支持多商品，默认None）
+    :param image_urls: 关联的图片URL列表（可选，默认None）
+    :param message_id: 记录主键ID（可选，有值则更新，无值则新增）
+    :return: 插入/更新的记录唯一标识（新增返回ObjectId字符串，更新返回传入的message_id）
+    """
+    # 生成当前时间的时间戳（秒级），用于记录消息的创建时间，后续用于排序和查询
+    ts = datetime.now().timestamp()
+
+    # 构造要插入/更新的文档数据（MongoDB的基本数据单元是文档，类似Python字典）
+    document = {
+        "user_id": user_id,  # 用户ID，关联维度
+        "question": question,  # 用户问题（重写后的问题，有可能是用户原问题）
+        "answer":answer, # 系统回答
+        "item_names": item_names,  # 关联商品名称列表
+        "image_urls": image_urls,  # 关联图片URL列表
+        "ts": ts,  # 时间戳，排序和时间筛选维度
+        "is_web_only":is_web_only # 答案是否仅来源于网络
+    }
+
+    # 获取全局的HistoryMongoTool实例，使用单例模式
+    mongo_tool = get_history_mongo_tool()
+    # 判断是否传入主键ID，区分更新/新增逻辑
+    if message_id:
+        # 有message_id：执行更新操作（根据主键更新）
+        result = mongo_tool.chat_history_message.update_one(
+            {"_id": ObjectId(message_id)},  # 更新条件：主键匹配（需将字符串转为ObjectId类型）
+            {"$set": document}  # 更新操作：$set表示只更新指定字段，保留其他字段
+        )
+        # 更新操作返回传入的message_id作为标识
+        return message_id
+    else:
+        # 无message_id：执行新增操作
+        result = mongo_tool.chat_history_message.insert_one(document)
+        # 新增操作返回插入的ObjectId并转为字符串，便于上层使用（避免直接返回ObjectId对象）
+        return str(result.inserted_id)
+
+
+
+# 文件入库时间维护
+def save_document_versions(
+        _id: str,
+        item_name: str,
+        file_name: str,
+        file_hash: list[str] | None = None,
+        last_import_time: list[str] | None = None,
+) -> str:
+    """
+    写入/更新单条会话记录到MongoDB
+    支持两种模式：无message_id时新增记录，有message_id时更新已有记录
+    :param session_id: 会话唯一标识，关联对话所属的会话
+    :param role: 消息角色，固定值：user（用户）/assistant（助手）
+    :param text: 对话核心内容，用户的提问或助手的回答
+    :param rewritten_query: 重写后的查询语句（可选，用于检索增强等场景，默认空字符串）
+    :param item_names: 关联的商品名称列表（可选，支持多商品，默认None）
+    :param image_urls: 关联的图片URL列表（可选，默认None）
+    :param message_id: 记录主键ID（可选，有值则更新，无值则新增）
+    :return: 插入/更新的记录唯一标识（新增返回ObjectId字符串，更新返回传入的message_id）
+    """
+    # 生成当前时间的时间戳（秒级），用于记录消息的创建时间，后续用于排序和查询
+    ts = datetime.now().timestamp()
+
+    # 构造要插入/更新的文档数据（MongoDB的基本数据单元是文档，类似Python字典）
+    document = {
+        "_id": _id,  # 文件，关联维度
+        "item_name": item_name,  # 文件主体
+        "file_name":file_name, # 文件名
+        "file_hash": file_hash,  # 文件哈希数据
+        "last_import_time": last_import_time  # 时间戳，文件上传、更新时间
+    }
+
+    # 获取全局的HistoryMongoTool实例，使用单例模式
+    mongo_tool = get_history_mongo_tool()
+
+
+    # 无message_id：执行新增操作
+    result = mongo_tool.document_versions.insert_one(document)
+    # 新增操作返回插入的ObjectId并转为字符串，便于上层使用（避免直接返回ObjectId对象）
+    return str(result.inserted_id)
 
 
 def update_message_item_names(ids: list[str], item_names: list[str]) -> int:
@@ -185,7 +294,7 @@ def update_message_item_names(ids: list[str], item_names: list[str]) -> int:
         # 异常时返回0，标识更新失败
         return 0
 
-
+# 获取会话级别历史记录session_id
 def get_recent_messages(session_id: str, limit: int = 10) -> list[dict[str, Any]]:
     """
     查询指定会话的最近N条对话记录，返回原始字典格式
@@ -215,6 +324,96 @@ def get_recent_messages(session_id: str, limit: int = 10) -> list[dict[str, Any]
         # 异常时返回空列表，避免上层处理None报错
         return []
 
+# 获取存储的历史记录：user_id匹配（用户历史记录匹配）
+def get_recent_history_messages(user_id: str, limit: int = 30) -> list[dict[str, Any]]:
+    """
+    查询指定会话的最近N条对话记录，返回原始字典格式
+    结果按时间正序排列，可直接喂给LLM作为上下文
+    :param session_id: 会话唯一标识，用于筛选指定会话的记录
+    :param limit: 条数限制，默认返回最近10条
+    :return: 对话记录列表（字典格式），查询失败返回空列表
+    """
+    # 获取全局的HistoryMongoTool实例，使用单例模式
+    mongo_tool = get_history_mongo_tool()
+    try:
+        # 构造查询条件：仅查询指定session_id的记录
+        query = {"user_id": user_id}
+
+        # 执行查询：按时间戳倒序取最近记录，限制返回条数
+        # find(query)：获取符合条件的游标（惰性加载，不立即查询）
+        # sort("ts", -1)：按ts字段倒序（从新到旧），用于快速获取最近消息
+        # limit(limit)：限制返回的最大条数
+        cursor = mongo_tool.chat_history_message.find(query).sort("ts", -1).limit(limit)
+        # 将游标转为列表，触发实际数据库查询，获取所有符合条件的文档
+        messages = list(cursor)
+        # 返回查询结果列表
+        return messages
+    except Exception as e:
+        # 捕获查询异常，记录错误日志
+        logger.error(f"Error getting recent messages: {e}")
+        # 异常时返回空列表，避免上层处理None报错
+        return []
+
+# 历史记录匹配（永久）
+def history_match(query:dict):
+    # query查询条件
+    # 历史信息匹配
+
+    # query = {
+    #     "user_id": user_id,
+    #     "question": question,
+    #     "item_names": {"$in": [item_name]}
+    # }
+
+    # 获取全局的HistoryMongoTool实例，使用单例模式
+    mongo_tool = get_history_mongo_tool()
+    try:
+        res = mongo_tool.chat_history_message.find_one(query)
+        # res = {
+        #         "user_id": user_id,  # 用户ID，关联维度
+        #         "question": question,  # 用户问题（重写后的问题，有可能是用户原问题）
+        #         "answer":answer, # 系统回答
+        #         "item_names": item_names,  # 关联商品名称列表
+        #         "image_urls": image_urls,  # 关联图片URL列表,
+        #         "is_web_only"：False,# 是否仅来源于网络
+        #         "ts": ts  # 时间戳，排序和时间筛选维度 }
+
+        # 有返回字典格式和插入一致，没有返回None
+        return res
+    except Exception as e:
+        # 捕获查询异常，记录错误日志
+        logger.error(f"历史消息匹配异常: str{e}")
+        # 异常时返回空列表，避免上层处理None报错
+        return []
+
+# 文件时间戳文件的匹配函数
+def document_versions_match(query: dict):
+    # query查询条件
+    # 历史信息匹配
+
+    # query = {
+    #      ”file_title“：file_title，
+    #     "item_names":item_name
+    # }
+
+    # 获取全局的HistoryMongoTool实例，使用单例模式
+    mongo_tool = get_history_mongo_tool()
+    try:
+        res = mongo_tool.document_versions.find_one(query)
+        # 有返回字典格式和插入一致，没有返回None
+        return res
+    # {
+    #         "_id": _id,  # 文件，关联维度
+    #         "item_name": item_name,  # 文件主体
+    #         "file_name":file_name, # 文件名
+    #         "file_hash": file_hash,  # 文件哈希数据
+    #         "last_import_time": last_import_time  # 时间戳，文件上传、更新时间
+    #     }
+    except Exception as e:
+        # 捕获查询异常，记录错误日志
+        logger.error(f"历史消息匹配异常: str{e}")
+        # 异常时返回空列表，避免上层处理None报错
+        return []
 
 # 主程序入口：仅当直接运行该脚本时执行，用于简单的功能测试
 if __name__ == "__main__":

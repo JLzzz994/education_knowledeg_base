@@ -24,6 +24,7 @@ TASK_STATUS_PENDING = "pending"
 TASK_STATUS_PROCESSING = "processing"
 TASK_STATUS_COMPLETED = "completed"
 TASK_STATUS_FAILED = "failed"
+TASK_STATUS_INTERRUPTED = "interrupted"
 
 # 节点名 -> 中文名映射（用于前端展示）
 # 说明：这里的 key 应与 LangGraph 的 add_node("xxx", ...) 中的节点名一致。
