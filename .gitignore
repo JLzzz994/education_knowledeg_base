@@ -164,6 +164,7 @@ cython_debug/
 logs/
 notes/
 output/
+.worktrees/
 .idea/
 images/
 test/
