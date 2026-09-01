@@ -205,7 +205,7 @@ def enrich_markdown_images(state: ImportGraphState) -> ImportGraphState:
     md_content, md_path_obj, images_path_obj = load_md_and_images_path(state)
     # 2 判断images目录是否存在且有内容，不存在或为空则跳过图片处理
     if not images_path_obj.is_dir() or not any(images_path_obj.iterdir()):
-        logger.warning(f'当前{md_content}没有图片,无需图片处理 正常进入下一个节点')
+        logger.warning(f'当前文件没有图片,无需图片处理 正常进入下一个节点')
         return state
     # 3 获取匹配图片的上下文
     images_context: list[tuple[str, str, tuple[str, str]]] = scan_images_match_context(md_content, images_path_obj)

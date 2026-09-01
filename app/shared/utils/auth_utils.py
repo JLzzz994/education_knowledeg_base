@@ -62,7 +62,7 @@ def _base64url_encode(data: bytes) -> str:
 
 def _base64url_decode(s: str) -> bytes:
     """Base64 URL 安全解码（补齐填充 = 号）"""
-    padding = 4 - len(s) % 4
+    padding = (4 - len(s) % 4) % 4
     s += "=" * padding
     return base64.urlsafe_b64decode(s)
 

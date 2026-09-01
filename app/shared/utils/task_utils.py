@@ -26,10 +26,26 @@ TASK_STATUS_COMPLETED = "completed"
 TASK_STATUS_FAILED = "failed"
 TASK_STATUS_INTERRUPTED = "interrupted"
 
+# REQ-05: 节点权重定义（导入流程各节点权重，总计 100%）
+_NODE_WEIGHTS: Dict[str, int] = {
+    "node_entry": 5,
+    "node_pdf_to_md": 25,
+    "node_docx_to_md": 25,
+    "node_pptx_to_md": 25,
+    "node_xlsx_to_md": 25,
+    "node_image_ocr": 25,
+    "node_html_to_md": 25,
+    "node_txt_to_md": 25,
+    "node_md_img": 15,
+    "node_document_split": 10,
+    "node_item_name_recognition": 15,
+    "node_bge_embedding": 20,
+    "node_import_milvus": 10,
+}
+
 # 节点名 -> 中文名映射（用于前端展示）
 # 说明：这里的 key 应与 LangGraph 的 add_node("xxx", ...) 中的节点名一致。
 _NODE_NAME_TO_CN: Dict[str, str] = {
-    "upload_file": "开始上传文件",
     "node_entry": "检查文件",
     "node_pdf_to_md": "PDF转Markdown",
     "node_docx_to_md": "Word转Markdown",
@@ -42,7 +58,6 @@ _NODE_NAME_TO_CN: Dict[str, str] = {
     "node_item_name_recognition": "主体名称识别",
     "node_document_split": "文档切分",
     "node_bge_embedding": "向量生成",
-    "node_import_kg": "导入知识图谱",
     "node_import_milvus": "导入向量库",
     "__end__": "处理完成",
     "END": "处理完成",
@@ -181,9 +196,23 @@ def update_task_status(task_id: str, status_name: str, push_queue: bool = False)
         task_push_queue(task_id)
 
 
+def get_task_progress(task_id: str) -> int:
+    """
+    REQ-05: 根据已完成节点的权重计算进度百分比（0-100）。
+    格式转换节点（pdf/docx/pptx/xlsx/image/html/txt）共享 25% 权重。
+    """
+    _ensure_task(task_id)
+    done = _tasks_done_list.get(task_id, [])
+    progress = 0
+    for node_name in done:
+        progress += _NODE_WEIGHTS.get(node_name, 0)
+    return min(progress, 100)
+
+
 def task_push_queue(task_id: str):
     push_to_session(task_id, "progress", {
         "status": get_task_status(task_id),
+        "progress": get_task_progress(task_id),
         "done_list": get_done_task_list(task_id),
         "running_list": get_running_task_list(task_id),
     })

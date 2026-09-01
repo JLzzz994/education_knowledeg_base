@@ -1,0 +1,475 @@
+<!-- 登录/注册页面 — DeepSeek 风格，深色背景 + 居中卡片 -->
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1.0" />
+  <title>掌柜智库 — 登录</title>
+  <style>
+    :root {
+      --bg: #0f1117;
+      --card: #1a1c24;
+      --card-border: #2a2d38;
+      --text: #e8eaed;
+      --text-2: #9aa0a8;
+      --text-3: #6b7280;
+      --accent: #3b82f6;
+      --accent-hover: #2563eb;
+      --accent-light: rgba(59,130,246,.12);
+      --input-bg: #12141b;
+      --input-border: #2a2d38;
+      --input-focus: #3b82f6;
+      --error: #ef4444;
+      --success: #22c55e;
+      --radius: 12px;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: "SF Pro Text", -apple-system, BlinkMacSystemFont, "Segoe UI",
+                   "PingFang SC", "Microsoft YaHei", sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+    }
+
+    /* ========== 背景光效 ========== */
+    body::before {
+      content: '';
+      position: fixed;
+      top: -40%; left: -20%;
+      width: 80%; height: 80%;
+      background: radial-gradient(circle, rgba(59,130,246,.08), transparent 60%);
+      pointer-events: none;
+    }
+    body::after {
+      content: '';
+      position: fixed;
+      bottom: -30%; right: -10%;
+      width: 60%; height: 60%;
+      background: radial-gradient(circle, rgba(139,92,246,.06), transparent 55%);
+      pointer-events: none;
+    }
+
+    /* ========== 登录卡片 ========== */
+    .card {
+      position: relative;
+      width: 100%;
+      max-width: 420px;
+      background: var(--card);
+      border: 1px solid var(--card-border);
+      border-radius: 20px;
+      padding: 40px 36px 36px;
+      box-shadow: 0 20px 60px rgba(0,0,0,.4);
+    }
+
+    /* ========== 品牌区域 ========== */
+    .brand {
+      text-align: center;
+      margin-bottom: 32px;
+    }
+    .brand .logo {
+      width: 56px; height: 56px;
+      border-radius: 16px;
+      background: linear-gradient(135deg, var(--accent), #8b5cf6);
+      box-shadow: 0 8px 24px rgba(59,130,246,.3);
+      margin: 0 auto 14px;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 24px; color: #fff; font-weight: 700;
+    }
+    .brand h1 {
+      font-size: 22px;
+      font-weight: 600;
+      letter-spacing: .5px;
+    }
+    .brand p {
+      font-size: 13px;
+      color: var(--text-2);
+      margin-top: 6px;
+    }
+
+    /* ========== Tab 切换 ========== */
+    .tabs {
+      display: flex;
+      background: var(--input-bg);
+      border-radius: 10px;
+      padding: 4px;
+      margin-bottom: 28px;
+    }
+    .tab-btn {
+      flex: 1;
+      padding: 10px 0;
+      border: none;
+      background: transparent;
+      color: var(--text-3);
+      font-size: 14px;
+      font-weight: 500;
+      border-radius: 8px;
+      cursor: pointer;
+      transition: all .2s;
+    }
+    .tab-btn.active {
+      background: var(--accent);
+      color: #fff;
+      box-shadow: 0 2px 8px rgba(59,130,246,.3);
+    }
+
+    /* ========== 表单 ========== */
+    .form-group {
+      margin-bottom: 18px;
+    }
+    .form-group label {
+      display: block;
+      font-size: 13px;
+      color: var(--text-2);
+      margin-bottom: 6px;
+      font-weight: 500;
+    }
+    .form-group input {
+      width: 100%;
+      padding: 12px 14px;
+      background: var(--input-bg);
+      border: 1px solid var(--input-border);
+      border-radius: 10px;
+      color: var(--text);
+      font-size: 14px;
+      outline: none;
+      transition: border-color .2s, box-shadow .2s;
+    }
+    .form-group input::placeholder {
+      color: var(--text-3);
+    }
+    .form-group input:focus {
+      border-color: var(--input-focus);
+      box-shadow: 0 0 0 3px rgba(59,130,246,.15);
+    }
+    .form-group .hint {
+      font-size: 12px;
+      color: var(--text-3);
+      margin-top: 4px;
+    }
+
+    /* ========== 提交按钮 ========== */
+    .submit-btn {
+      width: 100%;
+      padding: 13px 0;
+      border: none;
+      border-radius: 10px;
+      background: linear-gradient(135deg, var(--accent), #6366f1);
+      color: #fff;
+      font-size: 15px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: opacity .2s, transform .1s;
+      margin-top: 6px;
+    }
+    .submit-btn:hover { opacity: .92; }
+    .submit-btn:active { transform: scale(.98); }
+    .submit-btn:disabled {
+      opacity: .5;
+      cursor: not-allowed;
+    }
+
+    /* ========== Toast 提示 ========== */
+    .toast-container {
+      position: fixed;
+      top: 24px; right: 24px;
+      z-index: 9999;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+    .toast {
+      padding: 12px 20px;
+      border-radius: 10px;
+      font-size: 13px;
+      font-weight: 500;
+      color: #fff;
+      box-shadow: 0 8px 24px rgba(0,0,0,.3);
+      animation: toastIn .3s ease-out;
+      max-width: 340px;
+    }
+    .toast.success { background: var(--success); }
+    .toast.error { background: var(--error); }
+    .toast.info { background: var(--accent); }
+    @keyframes toastIn {
+      from { opacity: 0; transform: translateY(-12px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    /* ========== 底部链接 ========== */
+    .footer {
+      text-align: center;
+      margin-top: 24px;
+      font-size: 12px;
+      color: var(--text-3);
+    }
+    .footer a {
+      color: var(--accent);
+      text-decoration: none;
+    }
+    .footer a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+
+<div class="toast-container" id="toastContainer"></div>
+
+<div class="card">
+  <!-- 品牌 -->
+  <div class="brand">
+    <div class="logo">智</div>
+    <h1>掌柜智库</h1>
+    <p>智能知识库问答系统</p>
+  </div>
+
+  <!-- Tab 切换 -->
+  <div class="tabs">
+    <button class="tab-btn active" id="tabLogin" onclick="switchTab('login')">登录</button>
+    <button class="tab-btn" id="tabRegister" onclick="switchTab('register')">注册</button>
+  </div>
+
+  <!-- 登录表单 -->
+  <form id="loginForm" onsubmit="return handleLogin(event)">
+    <div class="form-group">
+      <label>用户名</label>
+      <input type="text" id="loginUsername" placeholder="请输入用户名" autocomplete="username" />
+    </div>
+    <div class="form-group">
+      <label>密码</label>
+      <input type="password" id="loginPassword" placeholder="请输入密码" autocomplete="current-password" />
+    </div>
+    <button type="submit" class="submit-btn" id="loginBtn">登录</button>
+  </form>
+
+  <!-- 注册表单（默认隐藏） -->
+  <form id="registerForm" style="display:none" onsubmit="return handleRegister(event)">
+    <div class="form-group">
+      <label>用户名</label>
+      <input type="text" id="regUsername" placeholder="至少 2 个字符" autocomplete="username" />
+    </div>
+    <div class="form-group">
+      <label>密码</label>
+      <input type="password" id="regPassword" placeholder="至少 6 个字符" autocomplete="new-password" />
+    </div>
+    <div class="form-group">
+      <label>邮箱（可选）</label>
+      <input type="email" id="regEmail" placeholder="example@mail.com" autocomplete="email" />
+    </div>
+    <button type="submit" class="submit-btn" id="regBtn">注册</button>
+  </form>
+
+  <div class="footer">
+    <a href="/admin">管理后台</a>
+  </div>
+</div>
+
+<script>
+  // ==================== 配置 ====================
+  // 认证服务地址（同源或默认 8002）
+  const AUTH_BASE = location.origin.startsWith('http') ? location.origin : 'http://127.0.0.1:8002';
+  // 跳转防抖：防止 8002/8001/8000 之间互相跳转形成循环
+  const REDIRECT_GUARD_KEY = '_auth_redirect_ts';
+
+  // ==================== Toast 提示 ====================
+  function showToast(message, type) {
+    type = type || 'info';
+    const container = document.getElementById('toastContainer');
+    const el = document.createElement('div');
+    el.className = 'toast ' + type;
+    el.textContent = message;
+    container.appendChild(el);
+    setTimeout(() => { el.remove(); }, 3000);
+  }
+
+  // ==================== Tab 切换 ====================
+  function switchTab(tab) {
+    document.getElementById('tabLogin').classList.toggle('active', tab === 'login');
+    document.getElementById('tabRegister').classList.toggle('active', tab === 'register');
+    document.getElementById('loginForm').style.display = tab === 'login' ? 'block' : 'none';
+    document.getElementById('registerForm').style.display = tab === 'register' ? 'block' : 'none';
+  }
+
+  // ==================== 登录处理 ====================
+  async function handleLogin(e) {
+    e.preventDefault();
+    const username = document.getElementById('loginUsername').value.trim();
+    const password = document.getElementById('loginPassword').value;
+
+    // 前端验证
+    if (username.length < 2) { showToast('用户名至少 2 个字符', 'error'); return false; }
+    if (password.length < 1) { showToast('请输入密码', 'error'); return false; }
+
+    const btn = document.getElementById('loginBtn');
+    btn.disabled = true;
+    btn.textContent = '登录中...';
+
+    try {
+      // 1. 调用登录接口
+      const res = await fetch(AUTH_BASE + '/auth/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username, password }),
+      });
+      const data = await res.json();
+
+      if (data.code !== 200) {
+        showToast(data.message || '登录失败', 'error');
+        return false;
+      }
+
+      // 2. 存储 Token 和过期时间
+      const tokenData = data.data || {};
+      localStorage.setItem('access_token', tokenData.access_token || '');
+      localStorage.setItem('token_expires', String(Date.now() + (tokenData.expires_in || 7200) * 1000));
+      localStorage.setItem('username', username);
+
+      // 3. 获取用户信息
+      try {
+        const meRes = await fetch(AUTH_BASE + '/auth/me', {
+          headers: { 'Authorization': 'Bearer ' + (tokenData.access_token || '') },
+        });
+        const meData = await meRes.json();
+        if (meData.code === 200 && meData.data) {
+          localStorage.setItem('user_id', meData.data.user_id || '');
+          localStorage.setItem('user_role', meData.data.role || 'user');
+        }
+      } catch (_) {}
+
+      showToast('登录成功，正在跳转...', 'success');
+
+      // 4. 跳转到来源页面或默认查询页面（带防抖）
+      localStorage.setItem(REDIRECT_GUARD_KEY, String(Date.now()));
+      const params = new URLSearchParams(window.location.search);
+      let redirectTo = params.get('redirect_to') || 'http://127.0.0.1:8001/html';
+
+      // 跨域跳转时，将 token 附在 URL 参数中（localStorage 按 origin 隔离）
+      try {
+        const target = new URL(redirectTo);
+        if (target.origin !== location.origin) {
+          target.searchParams.set('_token', tokenData.access_token || '');
+          target.searchParams.set('_expires', String(Date.now() + (tokenData.expires_in || 7200) * 1000));
+          target.searchParams.set('_user', username);
+          target.searchParams.set('_uid', localStorage.getItem('user_id') || '');
+          target.searchParams.set('_role', localStorage.getItem('user_role') || 'user');
+          redirectTo = target.toString();
+        }
+      } catch (_) {}
+
+      setTimeout(() => {
+        window.location.href = redirectTo;
+      }, 500);
+
+    } catch (err) {
+      showToast('网络错误，请稍后重试', 'error');
+    } finally {
+      btn.disabled = false;
+      btn.textContent = '登录';
+    }
+    return false;
+  }
+
+  // ==================== 注册处理 ====================
+  async function handleRegister(e) {
+    e.preventDefault();
+    const username = document.getElementById('regUsername').value.trim();
+    const password = document.getElementById('regPassword').value;
+    const email = document.getElementById('regEmail').value.trim();
+
+    // 前端验证
+    if (username.length < 2) { showToast('用户名至少 2 个字符', 'error'); return false; }
+    if (password.length < 6) { showToast('密码至少 6 个字符', 'error'); return false; }
+
+    const btn = document.getElementById('regBtn');
+    btn.disabled = true;
+    btn.textContent = '注册中...';
+
+    try {
+      const body = { username, password };
+      if (email) body.email = email;
+
+      const res = await fetch(AUTH_BASE + '/auth/register', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+      const data = await res.json();
+
+      if (data.code === 200) {
+        showToast('注册成功，请登录', 'success');
+        switchTab('login');
+        document.getElementById('loginUsername').value = username;
+      } else {
+        showToast(data.message || '注册失败', 'error');
+      }
+    } catch (err) {
+      showToast('网络错误，请稍后重试', 'error');
+    } finally {
+      btn.disabled = false;
+      btn.textContent = '注册';
+    }
+    return false;
+  }
+
+  // ==================== 自动跳转检查 ====================
+  // 如果已登录：
+  //   - 有 redirect_to 参数 → 自动跳转（带 token 参数）
+  //   - 无 redirect_to → 显示"已登录"导航链接
+  (function checkAutoRedirect() {
+    const token = localStorage.getItem('access_token');
+    const expires = Number(localStorage.getItem('token_expires') || 0);
+    if (!token || Date.now() >= expires) return;
+
+    const username = localStorage.getItem('username') || '用户';
+    const uid = localStorage.getItem('user_id') || '';
+    const role = localStorage.getItem('user_role') || 'user';
+
+    // 构造跨域跳转 URL（带 token 参数，解决 localStorage 跨域隔离问题）
+    const crossUrl = (base) => {
+      const u = new URL(base);
+      u.searchParams.set('_token', token);
+      u.searchParams.set('_expires', String(expires));
+      u.searchParams.set('_user', username);
+      u.searchParams.set('_uid', uid);
+      u.searchParams.set('_role', role);
+      return u.toString();
+    };
+
+    // 有 redirect_to 参数 → 自动跳转
+    const params = new URLSearchParams(window.location.search);
+    const redirectTo = params.get('redirect_to');
+    if (redirectTo) {
+      try {
+        const target = new URL(redirectTo);
+        if (target.origin !== location.origin) {
+          // 跨域：带 token 参数
+          window.location.href = crossUrl(redirectTo);
+        } else {
+          // 同域：直接跳
+          window.location.href = redirectTo;
+        }
+      } catch (_) {
+        window.location.href = redirectTo;
+      }
+      return;
+    }
+
+    // 无 redirect_to → 显示"已登录"导航链接
+    const footer = document.querySelector('.footer');
+    if (footer) {
+      footer.innerHTML = `
+        <div style="margin-bottom:8px;color:var(--text-2)">已登录为 <strong>${username}</strong></div>
+        <div style="display:flex;gap:12px;justify-content:center">
+          <a href="${crossUrl('http://127.0.0.1:8001/html')}">进入问答</a>
+          <a href="${crossUrl('http://127.0.0.1:8000/html')}">文件导入</a>
+          <a href="http://127.0.0.1:8002/admin">管理后台</a>
+        </div>
+      `;
+    }
+  })();
+</script>
+</body>
+</html>

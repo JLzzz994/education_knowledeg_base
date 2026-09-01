@@ -1,4 +1,5 @@
 from langgraph.graph import StateGraph, END
+from langgraph.checkpoint.memory import MemorySaver
 
 from app.process.query.agent.nodes.node_answer_output import node_answer_output
 from app.process.query.agent.nodes.node_item_name_confirm import node_item_name_confirm
@@ -85,3 +86,9 @@ query_graph_builder.add_edge("node_web_search_mcp","node_rrf")
 query_graph_builder.add_edge("node_rrf","node_rerank")
 query_graph_builder.add_edge("node_rerank","node_answer_output")
 query_graph_builder.add_edge("node_answer_output",END)
+
+# 创建内存检查点（支持 interrupt/resume 基于 thread_id 恢复状态）
+memory = MemorySaver()
+
+# 编译为可执行的图应用
+query_graph_app = query_graph_builder.compile(checkpointer=memory)

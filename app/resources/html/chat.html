@@ -275,6 +275,7 @@
         <label style="font-size:12px;display:flex;align-items:center;gap:4px;cursor:pointer;user-select:none;color:var(--muted);margin-right:10px;">
           <input type="checkbox" id="streamToggle" checked> 流式输出
         </label>
+        <a href="http://127.0.0.1:8000/html" style="font-size:12px;color:var(--brand);text-decoration:none;">文件导入</a>
         <span class="pill" id="apiPill">API: 未连接</span>
         <button class="btn" id="btnClear">清空对话</button>
       </div>
@@ -307,6 +308,21 @@
     const apiPill = document.getElementById('apiPill');
     const btnClear = document.getElementById('btnClear');
     const streamToggle = document.getElementById('streamToggle');
+
+    // ==================== 跨域 Token 接收 ====================
+    // 登录页（8002）跳转时会将 token 附在 URL 参数中，此处接收并存入本域 localStorage
+    (function receiveTokenFromURL() {
+      const p = new URLSearchParams(window.location.search);
+      const token = p.get('_token');
+      if (token) {
+        localStorage.setItem('access_token', token);
+        localStorage.setItem('token_expires', p.get('_expires') || '');
+        localStorage.setItem('username', p.get('_user') || '');
+        localStorage.setItem('user_id', p.get('_uid') || '');
+        localStorage.setItem('user_role', p.get('_role') || 'user');
+        window.history.replaceState({}, '', location.pathname);
+      }
+    })();
 
     // Session ID Logic
     let sessionId = localStorage.getItem('kb_session_id');
@@ -654,6 +670,35 @@
       if(progressEl) bubble.appendChild(progressEl);
     }
 
+    // ==================== 中断选项渲染（流式/非流式共用） ====================
+    function renderInterruptOptions(botMsgEl, answerEl, interruptData) {
+      const options = interruptData.options || [];
+      const description = interruptData.description || '';
+      answerEl.textContent = '';
+      const wrapper = document.createElement('div');
+      wrapper.className = 'interrupt-options';
+      wrapper.style.cssText = 'margin-top:10px;';
+      if (description) {
+        const descEl = document.createElement('div');
+        descEl.style.cssText = 'font-size:13px;color:var(--muted);margin-bottom:8px;';
+        descEl.textContent = description;
+        wrapper.appendChild(descEl);
+      }
+      const btnWrap = document.createElement('div');
+      btnWrap.style.cssText = 'display:flex;flex-wrap:wrap;gap:8px;';
+      options.forEach(opt => {
+        const btn = document.createElement('button');
+        btn.textContent = opt;
+        btn.style.cssText = 'padding:8px 16px;border:1px solid var(--border);border-radius:8px;background:var(--panel);cursor:pointer;font-size:13px;color:var(--text);transition:all .15s;';
+        btn.onmouseenter = () => { btn.style.borderColor = 'var(--brand)'; btn.style.color = 'var(--brand)'; };
+        btn.onmouseleave = () => { btn.style.borderColor = 'var(--border)'; btn.style.color = 'var(--text)'; };
+        btn.onclick = () => onOptionClick(opt, botMsgEl, answerEl, null);
+        btnWrap.appendChild(btn);
+      });
+      wrapper.appendChild(btnWrap);
+      answerEl.appendChild(wrapper);
+    }
+
     async function apiHealth(){
       try{
         const res = await fetch(`${API_BASE}/health`);
@@ -687,13 +732,15 @@
 
     async function submitQuery(text){
       const isStream = streamToggle.checked;
+      const userId = localStorage.getItem('user_id') || '';
       const res = await fetch(`${API_BASE}/query`, {
         method: 'POST',
         headers: {'Content-Type':'application/json'},
         body: JSON.stringify({
           query: text,
           session_id: sessionId,
-          is_stream: isStream
+          is_stream: isStream,
+          user_id: userId
         })
       });
       if(!res.ok){
@@ -729,7 +776,6 @@
     }
 
     async function onSend(){
-      console.log('[perf] A onSend start', performance.now());
       const text = (inputEl.value || '').trim();
       if(!text) return;
       inputEl.value = '';
@@ -748,8 +794,20 @@
 
         if (!isStream) {
           // 非流式：直接拿到结果
-          // data: { session_id, answer, done_list, error, message }
           renderProgress(botMsgEl, data.done_list || [], [], 'completed');
+
+          // 检查是否有中断数据（需用户选择主体）
+          if (data.interrupt && data.interrupt.options && data.interrupt.options.length > 0) {
+            const typing = botMsgEl.querySelector('.typing');
+            if(typing) typing.remove();
+            const bubble = botMsgEl.querySelector('.bubble');
+            let answerEl = bubble.querySelector('.answer');
+            if(!answerEl){ answerEl = document.createElement('div'); answerEl.className = 'answer'; bubble.insertBefore(answerEl, bubble.firstChild); }
+            renderInterruptOptions(botMsgEl, answerEl, data.interrupt);
+            sendBtn.disabled = false;
+            return;
+          }
+
           finalizeBotAnswer(botMsgEl, data.answer, data.error, data.image_urls || []);
           sendBtn.disabled = false;
           return;
@@ -820,11 +878,43 @@
           if(typing) typing.remove();
           const progress = botMsgEl.querySelector('details.progress');
           if(progress) progress.removeAttribute('open');
-          
+
           try{
             const d = JSON.parse(e.data || '{}');
             const finalText = (d && typeof d.answer === 'string' && d.answer.trim().length > 0) ? d.answer : (rawAnswerText || answerEl.textContent || '');
             renderAnswerWithImages(answerEl, finalText, d.image_urls || []);
+          }catch(_){}
+          es.close();
+          sendBtn.disabled = false;
+        });
+
+        // REQ-12: 网络检索提示（无主体时走纯网搜）
+        es.addEventListener('search_mode', (e) => {
+          try{
+            const d = JSON.parse(e.data || '{}');
+            const message = d.message || '正在通过网络搜索为您查找答案...';
+            // 在进度区域上方显示提示
+            const progressEl = botMsgEl.querySelector('details.progress');
+            if(progressEl){
+              const hint = document.createElement('div');
+              hint.style.cssText = 'font-size:12px;color:var(--brand);margin-bottom:6px;';
+              hint.textContent = '🌐 ' + message;
+              progressEl.parentNode.insertBefore(hint, progressEl);
+            }
+          }catch(_){}
+        });
+
+        // 中断事件：需要用户选择主体名称
+        es.addEventListener('interrupt', (e) => {
+          const typing = botMsgEl.querySelector('.typing');
+          if(typing) typing.remove();
+          const progress = botMsgEl.querySelector('details.progress');
+          if(progress) progress.removeAttribute('open');
+
+          try{
+            const d = JSON.parse(e.data || '{}');
+            const interruptData = d.interrupt || {};
+            renderInterruptOptions(botMsgEl, answerEl, interruptData);
           }catch(_){}
           es.close();
           sendBtn.disabled = false;
@@ -858,6 +948,132 @@
       }
     }
 
+    // 中断恢复：用户点击选项后调用 /resume 接口
+    async function onOptionClick(selectedItem, botMsgEl, answerEl, es) {
+      // 渲染用户选择
+      answerEl.textContent = `已选择：${selectedItem}`;
+      answerEl.style.cssText = 'color:var(--brand);font-weight:500;';
+
+      // 添加新的助手消息骨架
+      const newBotMsgEl = addBotMsgSkeleton();
+      sendBtn.disabled = true;
+
+      try {
+        const isStream = streamToggle.checked;
+        const res = await fetch(`${API_BASE}/resume`, {
+          method: 'POST',
+          headers: {'Content-Type':'application/json'},
+          body: JSON.stringify({
+            session_id: sessionId,
+            selected_value: selectedItem,
+            is_stream: isStream
+          })
+        });
+
+        if(!res.ok){
+          const msg = await res.text();
+          throw new Error(msg || '恢复执行失败');
+        }
+
+        const data = await res.json();
+
+        if(!isStream){
+          // 非流式：直接渲染结果
+          const typing = newBotMsgEl.querySelector('.typing');
+          if(typing) typing.remove();
+          finalizeBotAnswer(newBotMsgEl, data.answer, null, data.image_urls || []);
+          sendBtn.disabled = false;
+          return;
+        }
+
+        // 流式：建立新的 SSE 连接
+        const bubble = newBotMsgEl.querySelector('.bubble');
+        let newAnswerEl = bubble.querySelector('.answer');
+        if(!newAnswerEl){
+          newAnswerEl = document.createElement('div');
+          newAnswerEl.className = 'answer';
+          bubble.insertBefore(newAnswerEl, bubble.firstChild);
+        }
+
+        const newEs = new EventSource(`${API_BASE}/stream/${sessionId}`);
+        let rawAnswerText = '';
+
+        newEs.addEventListener('progress', (e) => {
+          try{
+            const d = JSON.parse(e.data || '{}');
+            renderProgress(newBotMsgEl, d.done_list, d.running_list, d.status);
+            if(d && d.status === 'completed'){
+              const typing = newBotMsgEl.querySelector('.typing');
+              if(typing) typing.remove();
+              sendBtn.disabled = false;
+            }
+          }catch(_){}
+        });
+
+        // REQ-12: 网络检索提示
+        newEs.addEventListener('search_mode', (e) => {
+          try{
+            const d = JSON.parse(e.data || '{}');
+            const message = d.message || '正在通过网络搜索为您查找答案...';
+            const progressEl = newBotMsgEl.querySelector('details.progress');
+            if(progressEl){
+              const hint = document.createElement('div');
+              hint.style.cssText = 'font-size:12px;color:var(--brand);margin-bottom:6px;';
+              hint.textContent = '🌐 ' + message;
+              progressEl.parentNode.insertBefore(hint, progressEl);
+            }
+          }catch(_){}
+        });
+
+        newEs.addEventListener('delta', (e) => {
+          try{
+            const d = JSON.parse(e.data || '{}');
+            const delta = d.delta || '';
+            if(delta){
+              rawAnswerText += delta;
+              renderAnswerWithImages(newAnswerEl, rawAnswerText, []);
+              scrollToBottom();
+            }
+          }catch(_){}
+        });
+
+        newEs.addEventListener('final', (e) => {
+          const typing = newBotMsgEl.querySelector('.typing');
+          if(typing) typing.remove();
+          const progress = newBotMsgEl.querySelector('details.progress');
+          if(progress) progress.removeAttribute('open');
+          try{
+            const d = JSON.parse(e.data || '{}');
+            const finalText = (d && typeof d.answer === 'string' && d.answer.trim().length > 0) ? d.answer : (rawAnswerText || newAnswerEl.textContent || '');
+            renderAnswerWithImages(newAnswerEl, finalText, d.image_urls || []);
+          }catch(_){}
+          newEs.close();
+          sendBtn.disabled = false;
+        });
+
+        newEs.addEventListener('error', (e) => {
+          const typing = newBotMsgEl.querySelector('.typing');
+          if(typing) typing.remove();
+          try{
+            const msg = e && e.data ? (JSON.parse(e.data).error || 'SSE 连接中断/失败') : 'SSE 连接中断/失败';
+            rawAnswerText += `\n\n（错误：${msg}）`;
+            renderAnswerWithImages(newAnswerEl, rawAnswerText, []);
+          }catch(_){
+            rawAnswerText += `\n\n（错误：SSE 连接中断/失败）`;
+            renderAnswerWithImages(newAnswerEl, rawAnswerText, []);
+          }
+          newEs.close();
+          sendBtn.disabled = false;
+        });
+      } catch(e) {
+        const bubble = newBotMsgEl.querySelector('.bubble');
+        const typing = newBotMsgEl.querySelector('.typing');
+        if(typing) typing.remove();
+        bubble.textContent = `恢复执行失败：${escapeHtml(e.message || e)}`;
+        sendBtn.disabled = false;
+      }
+    }
+
     sendBtn.addEventListener('click', onSend);
     inputEl.addEventListener('keydown', (e) => {
       if(e.key === 'Enter' && !e.shiftKey){
@@ -885,9 +1101,18 @@
       scrollToBottom();
     });
 
+    // 页面加载时做一次健康检查（不轮询）
     apiHealth();
-    setInterval(apiHealth, 5000);
-    loadHistory();
+
+    // 延迟加载历史记录（避免页面刚打开就请求）
+    let _historyLoaded = false;
+    setTimeout(() => {
+      if (!_historyLoaded) {
+        _historyLoaded = true;
+        loadHistory();
+      }
+    }, 500);
+
     setTimeout(() => inputEl.focus(), 200);
   </script>
 </body>

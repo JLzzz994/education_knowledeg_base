@@ -40,7 +40,7 @@ def milvus_search_entity(rewritten_query, confirmed_item_name_list):
                                    sparse_vector=sparse_vector,expr= f"item_name in {confirmed_item_name_list}",limit=5*2)
     # 3. 调用混合检索(设置输出列)
     milvus_result = milvus_gateway.hybrid_search(
-        collection_name=milvus_gateway.chunk_collection_name,
+        collection_name=milvus_gateway.get_chunks_collection,
         reqs=ann_reqs,
         ranker_weights=(0.6,0.4),
         limit=5,

@@ -147,12 +147,19 @@
 <body>
 
 <div class="container">
-    <h1>📄 知识库文件导入</h1>
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+        <h1 style="margin:0">📄 知识库文件导入</h1>
+        <div style="display:flex;align-items:center;gap:12px">
+            <a href="http://127.0.0.1:8001/html" style="color:#3498db;text-decoration:none;font-size:14px">进入问答</a>
+            <span id="userInfo" style="font-size:13px;color:#7f8c8d"></span>
+            <button onclick="logout()" style="background:none;border:1px solid #e74c3c;color:#e74c3c;padding:4px 10px;border-radius:4px;cursor:pointer;font-size:12px">退出</button>
+        </div>
+    </div>
     
     <div class="upload-area" id="dropZone" onclick="document.getElementById('fileInput').click()">
         <div class="upload-icon">☁️</div>
-        <p>点击或拖拽文件到此处 (PDF/MD)</p>
-        <input type="file" id="fileInput" class="file-input" multiple accept=".pdf,.md">
+        <p>点击或拖拽文件到此处 (PDF/MD/DOCX/PPTX/TXT/JPG/PNG)</p>
+        <input type="file" id="fileInput" class="file-input" multiple accept=".pdf,.md,.docx,.pptx,.txt,.jpg,.jpeg,.png">
     </div>
 
     <div id="fileList" class="file-list">
@@ -164,9 +171,72 @@
     const dropZone = document.getElementById('dropZone');
     const fileInput = document.getElementById('fileInput');
     const fileList = document.getElementById('fileList');
-    
+
     // 默认走导入服务同源地址；如你把页面单独打开（file://），回退到导入服务默认端口。
     const API_BASE = location.origin.startsWith('http') ? location.origin : 'http://127.0.0.1:8000';
+    const AUTH_BASE = 'http://127.0.0.1:8002';
+    const REDIRECT_GUARD_KEY = '_auth_redirect_ts';
+
+    // ==================== 跨域 Token 接收 ====================
+    // 登录页（8002）跳转时会将 token 附在 URL 参数中，此处接收并存入本域 localStorage
+    (function receiveTokenFromURL() {
+      const p = new URLSearchParams(window.location.search);
+      const token = p.get('_token');
+      if (token) {
+        localStorage.setItem('access_token', token);
+        localStorage.setItem('token_expires', p.get('_expires') || '');
+        localStorage.setItem('username', p.get('_user') || '');
+        localStorage.setItem('user_id', p.get('_uid') || '');
+        localStorage.setItem('user_role', p.get('_role') || 'user');
+        // 清除 URL 中的敏感参数，刷新不再携带
+        window.history.replaceState({}, '', location.pathname);
+      }
+    })();
+
+    // ==================== 认证检查 ====================
+    // 检查 Token 是否有效，无效则提示用户去登录（不自动跳转）
+    function checkAuth() {
+      const token = localStorage.getItem('access_token');
+      const expires = Number(localStorage.getItem('token_expires') || 0);
+      if (!token || Date.now() >= expires) {
+        return null;
+      }
+      return token;
+    }
+
+    function authHeaders() {
+      const token = checkAuth();
+      return token ? { 'Authorization': 'Bearer ' + token } : {};
+    }
+
+    // 检查登录状态，未登录时自动跳转登录页（携带当前页面地址，登录后自动跳回）
+    function ensureAuth() {
+      const token = checkAuth();
+      if (!token) {
+        // 直接跳转到登录页，登录页会自动 redirect 回来并携带 token
+        window.location.href = AUTH_BASE + '/html?redirect_to=' + encodeURIComponent(window.location.href);
+        return false;
+      }
+      return true;
+    }
+
+    // ==================== 用户信息显示 ====================
+    (function showUserInfo() {
+        const username = localStorage.getItem('username');
+        const userInfoEl = document.getElementById('userInfo');
+        if (username && userInfoEl) {
+            userInfoEl.textContent = username;
+        }
+    })();
+
+    function logout() {
+        localStorage.removeItem('access_token');
+        localStorage.removeItem('token_expires');
+        localStorage.removeItem('username');
+        localStorage.removeItem('user_id');
+        localStorage.removeItem('user_role');
+        window.location.href = AUTH_BASE + '/html';
+    }
 
     dropZone.addEventListener('dragover', (e) => {
         e.preventDefault();
@@ -202,6 +272,9 @@
     }
 
     async function uploadFile(file) {
+        // 上传前检查登录状态
+        if (!ensureAuth()) return;
+
         // 创建文件项UI
         const id = 'file-' + Math.random().toString(36).substr(2, 9);
         const html = `
@@ -241,20 +314,34 @@
 
             const response = await fetch(`${API_BASE}/upload`, {
                 method: 'POST',
+                headers: authHeaders(),
                 body: formData
             });
 
+            if (response.status === 401) {
+                statusBadge.textContent = '未授权';
+                statusBadge.className = 'status-badge status-error';
+                alert('登录已过期，请重新登录');
+                window.location.href = AUTH_BASE + '/html?redirect_to=' + encodeURIComponent(window.location.href);
+                return;
+            }
+            if (response.status === 403) {
+                statusBadge.textContent = '无权限';
+                statusBadge.className = 'status-badge status-error';
+                alert('您没有导入权限，请联系管理员');
+                return;
+            }
             if (!response.ok) throw new Error('Upload failed');
-            
-            const result = await response.json();
-            const taskId = result.task_ids[0]; // 假设一次传一个或取第一个
 
-            // 上传完成，进入处理中，进度固定为30%
-            updateProgressBar(progressBar, 30);
+            const result = await response.json();
+            const taskId = result.task_ids[0]; // 取第一个 task_id
+
+            // 上传完成，进入处理中，进度从 0 开始
+            updateProgressBar(progressBar, 0);
             statusBadge.textContent = '处理中...';
             statusBadge.className = 'status-badge status-processing';
 
-            // 2. 轮询状态
+            // 2. 轮询状态（使用后端返回的权重进度）
             pollStatus(taskId, itemEl);
 
         } catch (error) {
@@ -316,7 +403,7 @@
     function pollStatus(taskId, itemEl) {
         const statusBadge = itemEl.querySelector('.status-badge');
         const progressBar = itemEl.querySelector('.progress-bar');
-        
+
         const interval = setInterval(async () => {
             try {
                 const res = await fetch(`${API_BASE}/status/${taskId}`);
@@ -324,17 +411,18 @@
 
                 // 渲染日志（done/running）
                 renderLogs(itemEl, data.done_list, data.running_list);
-                
+
+                // REQ-05: 使用后端返回的权重进度
+                const progress = typeof data.progress === 'number' ? data.progress : 0;
+
                 if (data.status === 'completed') {
                     statusBadge.textContent = '已完成';
                     statusBadge.className = 'status-badge status-completed';
                     updateProgressBar(progressBar, 100);
                     clearInterval(interval);
                 } else if (data.status === 'processing') {
-                    // 保持处理中状态
                     statusBadge.textContent = '处理中...';
-                    // 确保进度为30%
-                     updateProgressBar(progressBar, 30);
+                    updateProgressBar(progressBar, Math.max(progress, 5));
                 } else if (data.status === 'failed') {
                     statusBadge.textContent = '失败';
                     statusBadge.className = 'status-badge status-error';
@@ -343,7 +431,7 @@
             } catch (e) {
                 console.error('Polling error', e);
             }
-        }, 2000); // 每2秒轮询一次
+        }, 2000);
     }
 </script>
 

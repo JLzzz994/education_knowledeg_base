@@ -18,7 +18,6 @@ from app.shared.clients.mongo_history_utils import (
 
 __all__ = [
     "create_hybrid_search_requests",
-    "fetch_chunks_by_chunk_ids",
     "get_milvus_client",
     "hybrid_search",
     "get_minio_client",

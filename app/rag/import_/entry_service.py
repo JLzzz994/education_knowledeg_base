@@ -39,7 +39,7 @@ def analysis_input_file(state: ImportGraphState) -> ImportGraphState:
     if suffix in IMAGE_FILE_EXTENSIONS:
         state['file_type'] = 'image'
     else:
-        state['file_type'] = local_file_path_obj.suffix.strip('.')
+        state['file_type'] = local_file_path_obj.suffix.strip('.').lower()
 
     # 4. 校验文件类型是否在支持列表中，不支持则直接返回（图路由会跳到 END）
     if state.get('file_type') not in SUPPORTED_FILE_TYPES:

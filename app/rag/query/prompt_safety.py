@@ -89,7 +89,7 @@ def detect_anomalous_characters(query: str) -> Tuple[bool, List[str]]:
             anomalies.append("包含Base64编码")
             break
     
-    if re.search(r'[<>{}[\]|`~!@#$%^&*()+=;:\'"\\]+{3,}', query):
+    if re.search(r'[<>{}\[\]|`~!@#$%^&*()+=;:\'"\\]{3,}', query):
         anomalies.append("异常符号重复")
     
     return len(anomalies) > 0, anomalies

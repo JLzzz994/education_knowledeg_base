@@ -85,7 +85,7 @@ def query_item_name_milvus(item_names: list[str]) -> dict[str, list[dict]]:
         ann_request_list = milvus_gateway.create_requests(dense_vector, sparse_vector, limit=10)
         # 5. 进行混合数据检索,获取结果
         milvus_search_result = milvus_gateway.hybrid_search(
-            collection_name=milvus_gateway.item_collection_name,
+            collection_name=milvus_gateway.get_item_name_collection,
             reqs=ann_request_list,
             ranker_weights=(0.4, 0.6),
             norm_score=True,
@@ -269,7 +269,7 @@ def confirm_item_name(state: QueryGraphState) -> QueryGraphState:
     """
 
     # 1. 获取参数和校验(state) => original_query / session_id
-    original_query, session_id = get_data_and_validates(state)
+    original_query, session_id,user_id = get_data_and_validates(state)
 
     # 2. 获取当前会话对应历史聊天记录(10条) [注意:只获取有效数据]
     history_message_list: list[dict] = get_history_messages(session_id, limit=10)

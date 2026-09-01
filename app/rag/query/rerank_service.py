@@ -117,7 +117,7 @@ def deal_question_answer_pair_list(rewritten_query, final_chunk_list) -> list[li
     """
     question_answer_pair_list = []
     # 1. 检查问题的长度 rewritten_query
-    reranker_model = llm_provider.reranker_model()
+    reranker_model = llm_provider.reranker_model
     tokenizer =  reranker_model.tokenizer
     # add_special_tokens = False单纯算我这个字符串对应token列表! 不用关注我前后的特殊字符
     # [1,2,3,55,66]
@@ -150,7 +150,7 @@ def reranker_score_pair_list(question_answer_pair_list):
     :param question_answer_pair_list:
     :return:
     """
-    reranker_model = llm_provider.reranker_model()
+    reranker_model = llm_provider.reranker_model
     # normalize=True 归一化 将分值拉倒 0 -1之间!方便进行后续算法统计!!
     score_list =  reranker_model.compute_score(question_answer_pair_list,normalize=True)
     logger.info(f"完成对数据:{question_answer_pair_list}的打分,分数为:{score_list}")
